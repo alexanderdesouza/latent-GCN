@@ -41,22 +41,22 @@ def load_data(path="data/rita/", dataset="rita",
     idx_map = {j: i for i, j in enumerate(idx)}
     edges_loaded = np.loadtxt("{}{}.cites".format(path, dataset), dtype=np.float32)
 
-    #process different adjacency matrices
+    # process different adjacency matrices
 
-    #calculate total amount of adjacency matrices (undirected)
+    # calculate total amount of adjacency matrices (undirected)
     adjs = []
     nb_adjs = max(1, edges_loaded.shape[1] - 2)
 
-    #extract the edges
+    # extract the edges
     edges_unordered = edges_loaded[:,0:2]
     edges = np.array(map(idx_map.get, edges_unordered[:,0:2].flatten()),
     dtype=np.int32).reshape(edges_unordered.shape)
 
-    #normalize the data columnwise
+    # normalize the data columnwise
     edge_features = edges_loaded
     edge_features[:,0:2] = edges
 
-    #normalize
+    # normalize
     if normalizer is not None:
         if features.shape[1] > 0:
             features = normalizer.fit_transform(features)
@@ -64,7 +64,7 @@ def load_data(path="data/rita/", dataset="rita",
             edge_features[:,2:] = normalizer.fit_transform(edge_features[:,2:])
 
 
-    #process the different adjacency matrices
+    # process the different adjacency matrices
     for a in range(nb_adjs):
         #extract the weights for the links in this adjacency matrix
         if edges_loaded.shape[1] > 2 and max_adjacency > 0:

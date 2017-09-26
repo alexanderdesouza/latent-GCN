@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import xrange
 from keras.layers import Input, Dropout, Dense, Activation, LSTM, SimpleRNN, GRU, Conv1D, Reshape
 from keras.models import Model
 from keras.optimizers import Adam
@@ -52,7 +53,7 @@ def experiment(args):
     else:
         y_train, y_val, y_test, idx_train, idx_val, idx_test, train_mask = get_splits_weighted(y, args.TRAIN_SPLIT,
                                                                                                 args.VAL_SPLIT)
-    batch_size=X.shape[0] #number of nodes
+    batch_size=X.shape[0] # number of nodes
 
     if args.FILTER == 'localpool':
         """ Local pooling filters (see 'renormalization trick' in Kipf & Welling, arXiv 2016) """
@@ -98,7 +99,7 @@ def experiment(args):
 
     elif args.FILTER in ['efgcn', 'lgcn']:
 
-        #selecting the normalize function
+        # selecting the normalize function
         if args.ADJ_NORMALIZER == 'sym':
             vector_to_adjacency_function = vector_to_adjacency_sym_normalized
         elif args.ADJ_NORMALIZER == 'right':
@@ -116,7 +117,7 @@ def experiment(args):
         if args.FILTER == 'lgcn':
             # embedding hidden layers
             for i, embedding_len in enumerate(args.EMBEDDING_LAYERS):
-                #add dropout if specified
+                # add dropout if specified
                 if args.EMB_DROPOUT > 0.0:
                     He = Dropout(args.EMB_DROPOUT)(He)
 
@@ -140,22 +141,22 @@ def experiment(args):
             embedding_len = len(G)
             He = Activation('relu')(He)
 
-        #helper functions for the vector_to_adjacency_function
-        #may be nicer to put these all into one Keras Layer instance, but it's not necessary
+        # helper functions for the vector_to_adjacency_function
+        # may be nicer to put these all into one Keras Layer instance, but it's not necessary
         tensor_shape = Lambda(get_tensor_shape, output_shape=(2,))(G[0])
         output_shape = (A[0].shape[0], A[0].shape[1])
         Ge = []
 
-        #slice the dense edge feature matrix and make adjacency matrices from them
+        # slice the dense edge feature matrix and make adjacency matrices from them
         for slice_index in xrange(embedding_len):
             #slice
             sli = Lambda(lambda x: x[:, slice_index])(He)
             #to adjacency matrices
             Ge += [Lambda(vector_to_adjacency_function, output_shape=output_shape)([G[0], sli, tensor_shape])]
 
-        #loop over hidden layers args.NETWORK_LAYERS = [16]: it goes from input to 16 to output input->32->16->output = [32,16]
+        # loop over hidden layers args.NETWORK_LAYERS = [16]: it goes from input to 16 to output input->32->16->output = [32,16]
         for l, hidden_nodes in enumerate(args.NETWORK_LAYERS):
-            #if it is the first layer, and its one_hot node features, we remove the self links
+            # if it is the first layer, and its one_hot node features, we remove the self links
             if args.ADD_NODE_ONE_HOT == True and l == 0:
                 first_layer_one_hot = True
             else:
@@ -194,6 +195,7 @@ def experiment(args):
     wait = 0
     preds = None
     best_val_loss = 99999
+
 
 
     # class balance
@@ -302,7 +304,7 @@ def main():
     # parser.add_argument('--testing',            dest='TESTING',         type=int,   default=0,              help='specify if you want to perform final testing, only works for predefined datasets (default=0)')
     args = parser.parse_args()
 
-    #force this for now
+    # force this for now
     args.TESTING = 0
 
     # parse some arguments
