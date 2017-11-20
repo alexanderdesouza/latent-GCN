@@ -1,6 +1,6 @@
 from __future__ import print_function
 
-import xrange
+# import xrange
 from keras.layers import Input, Dropout, Dense, Activation, LSTM, SimpleRNN, GRU, Conv1D, Reshape
 from keras.models import Model
 from keras.optimizers import Adam
@@ -10,7 +10,7 @@ from keras.regularizers import l2
 from keras.layers.core import Lambda
 from layers.graph import GraphConvolution, GraphInput, get_tensor_shape, \
     vector_to_adjacency, vector_to_adjacency_normalized, vector_to_adjacency_sym_normalized, \
-    extract_from_adjs, reshape_for_lstm, vector_to_adjacency_sym_sparse
+    extract_from_adjs, reshape_for_lstm, vector_to_adjacency_sym_sparse, vector_to_adjacency_softmax
 from utils import *
 
 from sklearn import preprocessing
@@ -50,6 +50,8 @@ def experiment(args):
                                                                                                 args.TRAIN_SPLIT,
                                                                                                 args.VAL_SPLIT,
                                                                                                 args.TESTING)
+    elif args.DATASET in ['cora', 'cora_plus']:
+        y_train, y_val, y_test, idx_train, idx_val, idx_test, train_mask = get_splits(y)
     else:
         y_train, y_val, y_test, idx_train, idx_val, idx_test, train_mask = get_splits_weighted(y, args.TRAIN_SPLIT,
                                                                                                 args.VAL_SPLIT)
@@ -108,51 +110,58 @@ def experiment(args):
             vector_to_adjacency_function = vector_to_adjacency
         elif args.ADJ_NORMALIZER == 'sym_sparse':
             vector_to_adjacency_function = vector_to_adjacency_sym_sparse
+        elif args.ADJ_NORMALIZER == 'softmax':
+            vector_to_adjacency_function = vector_to_adjacency_softmax
         else:
             raise Exception('Invalid normalizing mode for L-GCN')
 
         # turn sparse adjacency tensor into dense edge features matrix
-        He = Lambda(extract_from_adjs, output_shape=(A[0].data.shape[0], len(G)))(G)
-
-        if args.FILTER == 'lgcn':
-            # embedding hidden layers
-            for i, embedding_len in enumerate(args.EMBEDDING_LAYERS):
-                # add dropout if specified
-                if args.EMB_DROPOUT > 0.0:
-                    He = Dropout(args.EMB_DROPOUT)(He)
-
-                # if it is the rita lstm dataset 12 months 20 edge features per month
-                if args.DATASET in ['rita_lstm', 'rita_tts_lstm', 'rita_tts_hard_lstm']:
-                    output_shape = (12, 20)
-                    He = Lambda(reshape_for_lstm)(He)
-                    He = LSTM(units=embedding_len,
-                                activation=args.EMBEDDING_ACT,
-                                input_shape=output_shape,
-                                kernel_initializer=initializers.RandomUniform())(He)
-                else:
-                    He = Dense(embedding_len,
-                               activation=args.EMBEDDING_ACT,
-                               kernel_initializer=initializers.RandomUniform(),
-                               name='latent_relation_hidden_{}'.format(i))(He)
+        def latent_relation_layer(A, G, args, name):
+            He = Lambda(extract_from_adjs, output_shape=(A[0].data.shape[0], len(G)))(G)
 
 
+            if args.FILTER == 'lgcn':
+                # embedding hidden layers
+                for i, embedding_len in enumerate(args.EMBEDDING_LAYERS):
+                    # add dropout if specified
+                    if args.EMB_DROPOUT > 0.0:
+                        He = Dropout(args.EMB_DROPOUT)(He)
 
-        elif args.FILTER == 'efgcn':
-            embedding_len = len(G)
-            He = Activation('relu')(He)
+                    # if it is the rita lstm dataset 12 months 20 edge features per month
+                    if args.DATASET in ['rita_lstm', 'rita_tts_lstm', 'rita_tts_hard_lstm']:
+                        output_shape = (12, 20)
+                        He = Lambda(reshape_for_lstm)(He)
+                        He = LSTM(units=embedding_len,
+                                    activation=args.EMBEDDING_ACT,
+                                    input_shape=output_shape,
+                                    kernel_initializer=initializers.RandomUniform())(He)
+                    else:
+                        He = Dense(embedding_len,
+                                   activation=args.EMBEDDING_ACT,
+                                #    kernel_initializer=initializers.RandomUniform(),
+                                   name='latent_relation_' + name + '_{}'.format(i))(He)
 
-        # helper functions for the vector_to_adjacency_function
-        # may be nicer to put these all into one Keras Layer instance, but it's not necessary
-        tensor_shape = Lambda(get_tensor_shape, output_shape=(2,))(G[0])
-        output_shape = (A[0].shape[0], A[0].shape[1])
-        Ge = []
 
-        # slice the dense edge feature matrix and make adjacency matrices from them
-        for slice_index in xrange(embedding_len):
-            #slice
-            sli = Lambda(lambda x: x[:, slice_index])(He)
-            #to adjacency matrices
-            Ge += [Lambda(vector_to_adjacency_function, output_shape=output_shape)([G[0], sli, tensor_shape])]
+
+            elif args.FILTER == 'efgcn':
+                embedding_len = len(G)
+                He = Activation('relu')(He)
+
+            # helper functions for the vector_to_adjacency_function
+            # may be nicer to put these all into one Keras Layer instance, but it's not necessary
+            tensor_shape = Lambda(get_tensor_shape, output_shape=(2,))(G[0])
+            output_shape = (A[0].shape[0], A[0].shape[1])
+            Ge = []
+
+            # slice the dense edge feature matrix and make adjacency matrices from them
+            for slice_index in xrange(embedding_len):
+                #slice
+                sli = Lambda(lambda x: x[:, slice_index])(He)
+                #to adjacency matrices
+                Ge += [Lambda(vector_to_adjacency_function, output_shape=output_shape)([G[0], sli, tensor_shape])]
+            return Ge, embedding_len
+
+        # Ge, embedding_len = latent_relation_layer(A, G, args, 'hidden')
 
         # loop over hidden layers args.NETWORK_LAYERS = [16]: it goes from input to 16 to output input->32->16->output = [32,16]
         for l, hidden_nodes in enumerate(args.NETWORK_LAYERS):
@@ -161,6 +170,7 @@ def experiment(args):
                 first_layer_one_hot = True
             else:
                 first_layer_one_hot = False
+            Ge, embedding_len = latent_relation_layer(A, G, args, 'hidden_' + str(l))
 
             H = GraphConvolution(hidden_nodes,
                                  embedding_len,
@@ -171,6 +181,8 @@ def experiment(args):
                                  first_layer_one_hot=first_layer_one_hot)([H]+Ge)
 
             H = Dropout(args.DROPOUT)(H)
+        args.EMBEDDING_LAYERS = [4,1]
+        Ge, embedding_len = latent_relation_layer(A, G, args, 'final')
         Y = GraphConvolution(y.shape[1], embedding_len, activation='softmax', use_bias=True, self_links=args.SELF_LINKS)([H]+Ge)
 
 
