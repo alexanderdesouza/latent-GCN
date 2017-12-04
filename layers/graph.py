@@ -125,7 +125,7 @@ def vector_to_adjacency_sym_sparse(inputs):
     G, e, dense_shape = inputs
     e = add_epsilon(e)
     A = tf.SparseTensor(indices=G.indices, values=e, dense_shape=dense_shape)
-    D = tf.pow(tf.sparse_reduce_sum(A, 1), -0.5) 
+    D = tf.pow(tf.sparse_reduce_sum(A, 1), -0.5)
 
     #row wise normalization
     Drow = tf.gather(D, G.indices[:, 0])
@@ -139,6 +139,11 @@ def vector_to_adjacency_sym_sparse(inputs):
     A_ = tf.SparseTensor(indices=G.indices, values=e_, dense_shape=dense_shape)
     return A_
 
+def vector_to_adjacency_softmax(inputs):
+    G, e, dense_shape = inputs
+    A = tf.SparseTensor(indices=G.indices, values=e, dense_shape=dense_shape)
+    A_ = tf.sparse_softmax(A)
+    return A_
 
 def extract_from_adjs(inputs):
     As = inputs

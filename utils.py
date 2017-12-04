@@ -187,6 +187,19 @@ def get_splits_predefined(y, train_test_idx, train_split, val_split, testing=Fal
 
     return y_train, y_val, y_test, idx_train, idx_val, idx_test, train_mask
 
+def get_splits(y):
+    idx_train = range(140)
+    idx_val = range(200, 500)
+    idx_test = range(500, 1500)
+    y_train = np.zeros(y.shape, dtype=np.int32)
+    y_val = np.zeros(y.shape, dtype=np.int32)
+    y_test = np.zeros(y.shape, dtype=np.int32)
+    y_train[idx_train] = y[idx_train]
+    y_val[idx_val] = y[idx_val]
+    y_test[idx_test] = y[idx_test]
+    train_mask = sample_mask(idx_train, y.shape[0])
+    return y_train, y_val, y_test, idx_train, idx_val, idx_test, train_mask
+
 def get_splits_weighted(y, train_split, val_split):
     total       = y.shape[0]
     train_split = train_split / 100.0
